@@ -1,0 +1,236 @@
+const ibkr = require("../utils/ibkrApi");
+const { sendError } = require("../utils/errorHandler");
+
+const getAccounts = async (req, res) => {
+  try {
+    const status = await ibkr.get("/iserver/auth/status");
+    if (!status.data.authenticated) {
+      return res
+        .status(401)
+        .json({
+          success : false,
+          message : 'ຍັງບໍ່ໄດ້ login, ກະລຸນາເປີດ gateway ແລະ login ໃນ browser'
+        });
+    }
+    const response = await ibkr.get("/portfolio/accounts");
+    res.status(201).json({
+      success : true,
+      message : response.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      success : false,
+      message :error.message
+    });
+  }
+};
+
+const getPortfolio = async (req, res) => {
+  try {
+    const status = await ibkr.get("/iserver/auth/status");
+    if (!status.data.authenticated) {
+      return res
+        .status(401)
+        .json({ success : false ,message:"ຍັງບໍ່ໄດ້ login, ກະລຸນາເປີດ gateway ແລະ login ໃນ browser"});
+    }
+    const accountsRes = await ibkr.get("/portfolio/accounts");
+    const accountId = accountsRes.data[0].accountId;
+    const response = await ibkr.get(`/portfolio/${accountId}/positions`);
+    res.status(201).json({ success : true,message :response.data});
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({success : false , message:error.message});
+  }
+};
+
+const getPortfolioSummary = async (req, res) => {
+  try {
+    // const { accountId } = req.params;
+    const status = await ibkr.get("/iserver/auth/status");
+    if (!status.data.authenticated) {
+      return res
+        .status(401)
+        .json({ success : false ,message:"ຍັງບໍ່ໄດ້ login, ກະລຸນາເປີດ gateway ແລະ login ໃນ browser"});
+    }
+    const accountsRes = await ibkr.get("/portfolio/accounts");
+    const accountId = accountsRes.data[0].accountId;
+    const response = await ibkr.get(`/portfolio/${accountId}/summary`);
+    res.status(201).json({ success : true,message :response.data});
+  } catch (error) {
+    sendError(res, error, "/portfolio/summary");
+  }
+};
+
+const getMarketDataHistory = async (req, res) => {
+  try {
+    const conid = req.params.conid;
+    const status = await ibkr.get("/iserver/auth/status");
+    if (!status.data.authenticated) {
+      return res.status(401).json({ error: "ຍັງບໍ່ໄດ້ login" });
+    }
+    const historyParams = {
+      conid: conid,
+      period: "6m",
+      bar: "1d",
+      outsideRth: false,
+    };
+
+    const historyResponse = await ibkr.get("/iserver/marketdata/history", {
+      params: historyParams,
+    });
+    const historyData = historyResponse.data;
+
+    if (
+      historyData.error ||
+      !historyData.data ||
+      historyData.data.length === 0
+    ) {
+      return res
+        .status(404)
+        .json({ error: historyData.error || "No historical data." });
+    }
+    let symbol = "N/A";
+    let description = "N/A";
+    try {
+      const secdefResponse = await ibkr.get("/trsrv/secdef", {
+        params: { conid: conid },
+      });
+      if (secdefResponse.data && secdefResponse.data.length > 0) {
+        const contract = secdefResponse.data[0];
+        symbol = contract.symbol || contract.description || "N/A";
+        description = contract.description || "N/A";
+      }
+    } catch (secdefError) {
+      console.warn(
+        `Warning: Could not fetch security definition for ${conid}.`
+      );
+    }
+    let snapshotData = {};
+    try {
+      const snapshotResponse = await ibkr.get(
+        `/iserver/marketdata/snapshot?conids=${conid}&fields=31,84,86`
+      );
+      snapshotData = snapshotResponse.data[0] || {};
+    } catch (snapshotError) {
+      console.warn(`Warning: Could not fetch market snapshot for ${conid}.`);
+    }
+    res.json({
+      conid: conid,
+      symbol: symbol,
+      description: description,
+      marketData: historyData.data,
+      currentSnapshot: {
+        last: snapshotData["31"] || "N/A",
+        bid: snapshotData["84"] || "N/A",
+        ask: snapshotData["86"] || "N/A",
+      },
+      source: "Delayed Market Data (Historical + Snapshot)",
+    });
+  } catch (error) {
+    console.error("Market Data Error:", error.message);
+    if (error.response && error.response.status === 401) {
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+    res
+      .status(500)
+      .json({ error: `Error fetching market data: ${error.message}` });
+  }
+};
+
+const getMarketDataSnapshot = async (req, res) => {
+  try {
+    const conid = req.params.conid;
+    const status = await ibkr.get("/iserver/auth/status");
+    if (!status.data.authenticated) {
+      return res.status(401).json({ error: "ຍັງບໍ່ໄດ້ login" });
+    }
+    const response = await ibkr.get("/iserver/marketdata/snapshot", {
+      params: {
+        conids: conid,
+        fields: "31,84,86,44",
+      },
+    });
+    const data = response.data[0];
+    if (!data || data.error) {
+      return res
+        .status(404)
+        .json({ error: data.error || "No snapshot data found." });
+    }
+    const lastPrice = data["31"];
+    const lastClose = data["44"];
+    const bidPrice = data["84"];
+    const askPrice = data["86"];
+    const priceChange = lastPrice && lastClose ? lastPrice - lastClose : "N/A";
+    const percentChange =
+      lastPrice && lastClose
+        ? (((lastPrice - lastClose) / lastClose) * 100).toFixed(2) + "%"
+        : "N/A";
+    res.json({
+      conid: conid,
+      symbol: data.symbol,
+      description: data.description,
+      last: lastPrice || "N/A",
+      bid: bidPrice || "N/A",
+      ask: askPrice || "N/A",
+      lastClose: lastClose || "N/A",
+      change: priceChange,
+      percent_change: percentChange,
+      timestamp: new Date().toISOString(),
+      raw_data: data,
+    });
+  } catch (error) {
+    console.error("Snapshot Error:", error.message);
+    res
+      .status(500)
+      .json({ error: `Error fetching market data snapshot: ${error.message}` });
+  }
+};
+
+const getOrders = async (req, res) => {
+  try {
+    const response = await ibkr.get("/iserver/account/orders");
+    res.json(response.data);
+  } catch (error) {
+    sendError(res, error, "/orders");
+  }
+};
+
+const placeOrder = async (req, res) => {
+  const { conid, side, qty, price, account } = req.body;
+  const orderPayload = {
+    orders: [
+      {
+        conid: parseInt(conid, 10),
+        orderType: "LMT",
+        side: side,
+        price: parseFloat(price),
+        tif: "DAY",
+        quantity: parseFloat(qty),
+      },
+    ],
+  };
+  try {
+    const endpoint = `/iserver/account/${account}/orders`;
+    console.log(`ກຳລັງສົ່ງຄຳສັ່ງໄປທີ່: ${endpoint}`);
+    console.log("Payload:", JSON.stringify(orderPayload, null, 2));
+
+    const response = await ibkr.post(endpoint, orderPayload);
+
+    res.json(response.data);
+  } catch (error) {
+    const errorMessage = error.response?.data?.error || error.message;
+    const errorStatus = error.response?.status || 500;
+    console.error(`Trade Error [${errorStatus}]:`, errorMessage);
+    res.status(errorStatus).json({ error: errorMessage });
+  }
+};
+
+module.exports = {
+  getAccounts,
+  getPortfolio,
+  getPortfolioSummary,
+  getMarketDataHistory,
+  getMarketDataSnapshot,
+  getOrders,
+  placeOrder,
+};

@@ -1,0 +1,30 @@
+<h2>IBKR Login Demo</h2>
+<p>ເພື່ອໃຊ້ API ໄດ້, ກະລຸນາເປີດ Client Portal Gateway ແລະລັອກອິນໃນ browser ກ່ອນ</p><br>
+<a href="/login.html">login</a> <br>
+<a href="/api/accounts">ດຶງຂໍ້ມູນບັນຊີ</a><br/>
+<a href="/api/portfolio">ດຶງ Portfolio</a>
+<hr/>
+<h3>ຂໍ້ມູນຕະຫຼາດ (Delayed Data)</h3>
+<!-- ໝາຍເຫດ: ConID 265598 ແມ່ນຂອງ AAPL, ບໍ່ແມ່ນ NVDA -->
+<a href="/api/marketdata/snapshot/265598">ດຶງຂໍ້ມູນ AAPL (Conid 265598)</a><br>
+<a href="/api/marketdata/265598">ດຶງຂໍ້ມູນປະຫວັດ AAPL (Conid 265598)</a><br>
+<a href="/chart.html?conid=265598"><strong>ສະແດງກຣາຟ AAPL (Conid 265598)</strong></a>
+<hr/>
+<h3>ສົ່ງຄຳສັ່ງຊື້-ຂາຍ (Trade)</h3>
+<!-- ⚠️ ຕ້ອງແນ່ໃຈວ່າໄດ້ໃສ່ Account ID ທີ່ຖືກຕ້ອງ -->
+<form action="/api/trade" method="post">
+    <label for="conid">Conid:</label><br>
+    <input type="text" id="conid" name="conid" value="265598"><br>
+    <label for="side">Side:</label><br>
+    <select id="side" name="side">
+        <option value="BUY">BUY</option>
+        <option value="SELL">SELL</option>
+    </select><br>
+    <label for="qty">Quantity:</label><br>
+    <input type="text" id="qty" name="qty" value="1"><br>
+    <label for="price">Price:</label><br>
+    <input type="text" id="price" name="price" value="100.00"><br>
+    <label for="account">Account (ຕົວຢ່າງ: DU1234567):</label><br>
+    <input type="text" id="account" name="account" value=""><br><br>
+    <input type="submit" value="Submit Order">
+</form>
